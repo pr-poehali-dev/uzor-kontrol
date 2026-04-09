@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Play:wght@400;700&family=JetBrains+Mono:wght@400;700&family=Inter:wght@400;500;600;700&display=swap');
+@import url("https://fonts.googleapis.com/css2?family=Play:wght@400;700&family=JetBrains+Mono:wght@400;700&family=Inter:wght@400;500;600;700&display=swap");
 
 @tailwind base;
 @tailwind components;
@@ -102,19 +102,19 @@
 
 @layer components {
   .font-orbitron {
-    font-family: 'Play', sans-serif;
+    font-family: "Play", sans-serif;
   }
 
   .font-geist {
-    font-family: 'Inter', system-ui, sans-serif;
+    font-family: "Inter", system-ui, sans-serif;
   }
 
   .font-space-mono {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: "JetBrains Mono", monospace;
   }
 
   .font-display {
-    font-family: 'Play', sans-serif;
+    font-family: "Play", sans-serif;
   }
 
   .fade-in {
@@ -136,7 +136,8 @@
   .glow-border {
     position: relative;
     border: 1px solid transparent;
-    background: linear-gradient(hsl(var(--card)), hsl(var(--card))) padding-box,
+    background:
+      linear-gradient(hsl(var(--card)), hsl(var(--card))) padding-box,
       linear-gradient(45deg, hsl(var(--primary)), hsl(var(--accent))) border-box;
   }
 
@@ -197,6 +198,11 @@
   50% {
     opacity: 0.8;
   }
+}
+
+/* Mobile app styles */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 8px);
 }
 
 @keyframes bounce {

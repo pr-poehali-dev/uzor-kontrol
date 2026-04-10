@@ -1,7 +1,7 @@
 """
 Admin Servers API: list servers with health, toggle status.
-GET /        — все серверы + server_health
-PUT /{id}/toggle — переключить online/maintenance
+GET / — все серверы
+PUT / body: {"action": "toggle", "server_id": "..."}
 """
 import json
 import os
@@ -60,8 +60,6 @@ def handler(event: dict, context) -> dict:
         return resp(401, {'error': 'Unauthorized'})
 
     method = event.get('httpMethod', 'GET')
-    path   = event.get('path', '/')
-
     conn = get_conn()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
@@ -83,31 +81,33 @@ def handler(event: dict, context) -> dict:
         """)
         rows = cur.fetchall()
         conn.close()
-
-        servers = []
-        for r in rows:
-            servers.append({
-                'id': str(r['id']),
-                'name': r['name'],
-                'country': r['country'],
-                'city': r['city'],
-                'flag': r['flag'],
-                'ip': r['ip'],
-                'load': r['load'],
-                'status': r['status'],
-                'recommended': r['recommended'],
-                'latency': r['latency'],
-                'uptime': float(r['uptime']),
-                'last_check': r['last_check'].isoformat() if r['last_check'] else None,
-                'connections': int(r['connections'] or 0),
-                'bandwidth': round(int(r['connections'] or 0) * 0.003, 1),
-            })
+        servers = [{
+            'id': str(r['id']),
+            'name': r['name'],
+            'country': r['country'],
+            'city': r['city'],
+            'flag': r['flag'],
+            'ip': r['ip'],
+            'load': r['load'],
+            'status': r['status'],
+            'recommended': r['recommended'],
+            'latency': r['latency'],
+            'uptime': float(r['uptime']),
+            'last_check': r['last_check'].isoformat() if r['last_check'] else None,
+            'connections': int(r['connections'] or 0),
+            'bandwidth': round(int(r['connections'] or 0) * 0.003, 1),
+        } for r in rows]
         return resp(200, {'servers': servers})
 
-    # ---- PUT /{id}/toggle ----
-    parts = [p for p in path.split('/') if p]
-    if method == 'PUT' and len(parts) >= 2 and parts[-1] == 'toggle':
-        server_id = parts[-2]
+    # ---- PUT / — toggle server ----
+    if method == 'PUT':
+        body      = json.loads(event.get('body') or '{}')
+        server_id = body.get('server_id', '')
+
+        if not server_id:
+            conn.close()
+            return resp(400, {'error': 'server_id required'})
+
         cur.execute(f"SELECT status FROM {SCHEMA}.servers WHERE id = %s", (server_id,))
         row = cur.fetchone()
         if not row:
@@ -115,13 +115,10 @@ def handler(event: dict, context) -> dict:
             return resp(404, {'error': 'Server not found'})
 
         new_status = 'maintenance' if row['status'] == 'online' else 'online'
-        cur.execute(
-            f"UPDATE {SCHEMA}.servers SET status = %s WHERE id = %s",
-            (new_status, server_id)
-        )
+        cur.execute(f"UPDATE {SCHEMA}.servers SET status = %s WHERE id = %s", (new_status, server_id))
         conn.commit()
         conn.close()
         return resp(200, {'ok': True, 'status': new_status})
 
     conn.close()
-    return resp(404, {'error': 'Not found'})
+    return resp(405, {'error': 'Method not allowed'})

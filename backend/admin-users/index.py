@@ -1,8 +1,7 @@
 """
 Admin Users API: list users, block/unblock.
-GET  /       — список пользователей с подпиской
-PUT  /{id}/block   — заблокировать
-PUT  /{id}/unblock — разблокировать
+GET  / — список пользователей
+PUT  / body: {"action": "block"|"unblock", "user_id": "..."}
 """
 import json
 import os
@@ -63,8 +62,6 @@ def handler(event: dict, context) -> dict:
         return resp(401, {'error': 'Unauthorized'})
 
     method = event.get('httpMethod', 'GET')
-    path   = event.get('path', '/')
-
     conn = get_conn()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
@@ -73,7 +70,7 @@ def handler(event: dict, context) -> dict:
         cur.execute(f"""
             SELECT
                 u.id, u.email, u.name, u.is_admin, u.created_at,
-                COALESCE(s.plan, 'free')   AS plan,
+                COALESCE(s.plan, 'free')     AS plan,
                 COALESCE(s.status, 'active') AS subscription_status,
                 s.expires_at,
                 COUNT(cs.id) FILTER (WHERE cs.status = 'active') AS active_connections,
@@ -87,35 +84,30 @@ def handler(event: dict, context) -> dict:
         """)
         rows = cur.fetchall()
         conn.close()
-
-        users = []
-        for r in rows:
-            users.append({
-                'id': str(r['id']),
-                'email': r['email'],
-                'name': r['name'] or r['email'].split('@')[0],
-                'is_admin': r['is_admin'],
-                'plan': r['plan'],
-                'status': r['subscription_status'],
-                'registered_at': r['created_at'].isoformat() if r['created_at'] else None,
-                'last_seen': r['last_seen'].isoformat() if r['last_seen'] else None,
-                'active_connections': int(r['active_connections'] or 0),
-            })
+        users = [{
+            'id': str(r['id']),
+            'email': r['email'],
+            'name': r['name'] or r['email'].split('@')[0],
+            'is_admin': r['is_admin'],
+            'plan': r['plan'],
+            'status': r['subscription_status'],
+            'registered_at': r['created_at'].isoformat() if r['created_at'] else None,
+            'last_seen': r['last_seen'].isoformat() if r['last_seen'] else None,
+            'active_connections': int(r['active_connections'] or 0),
+        } for r in rows]
         return resp(200, {'users': users})
 
-    # ---- PUT /{id}/block or /unblock ----
-    parts = [p for p in path.split('/') if p]
-    if method == 'PUT' and len(parts) >= 2:
-        user_id = parts[-2]
-        action  = parts[-1]  # 'block' or 'unblock'
+    # ---- PUT / — block/unblock ----
+    if method == 'PUT':
+        body    = json.loads(event.get('body') or '{}')
+        action  = body.get('action', '')
+        user_id = body.get('user_id', '')
 
-        if action not in ('block', 'unblock'):
+        if action not in ('block', 'unblock') or not user_id:
             conn.close()
-            return resp(400, {'error': 'Invalid action'})
+            return resp(400, {'error': 'action (block|unblock) and user_id required'})
 
         new_status = 'blocked' if action == 'block' else 'active'
-
-        # Upsert subscription status
         cur.execute(
             f"""INSERT INTO {SCHEMA}.subscriptions (user_id, plan, status)
                 VALUES (%s, 'free', %s)
@@ -127,4 +119,4 @@ def handler(event: dict, context) -> dict:
         return resp(200, {'ok': True, 'status': new_status})
 
     conn.close()
-    return resp(404, {'error': 'Not found'})
+    return resp(405, {'error': 'Method not allowed'})

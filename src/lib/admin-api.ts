@@ -84,20 +84,23 @@ async function apiFetch(url: string, opts: RequestInit = {}) {
 
 export const adminApi = {
   async login(email: string, password: string): Promise<AdminProfile> {
-    const data = await apiFetch(`${URLS.auth}/login`, {
+    const data = await apiFetch(URLS.auth, {
       method: 'POST',
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ action: 'login', email, password }),
     });
     setToken(data.token);
     return { id: '', email: data.email, name: data.name, is_admin: true };
   },
 
   async me(): Promise<AdminProfile> {
-    return apiFetch(`${URLS.auth}/me`);
+    return apiFetch(URLS.auth);
   },
 
   async logout(): Promise<void> {
-    await apiFetch(`${URLS.auth}/logout`, { method: 'POST' }).catch(() => {});
+    await apiFetch(URLS.auth, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'logout' }),
+    }).catch(() => {});
     clearToken();
   },
 
@@ -107,11 +110,11 @@ export const adminApi = {
   },
 
   async blockUser(id: string): Promise<void> {
-    await apiFetch(`${URLS.users}/${id}/block`, { method: 'PUT' });
+    await apiFetch(URLS.users, { method: 'PUT', body: JSON.stringify({ action: 'block', user_id: id }) });
   },
 
   async unblockUser(id: string): Promise<void> {
-    await apiFetch(`${URLS.users}/${id}/unblock`, { method: 'PUT' });
+    await apiFetch(URLS.users, { method: 'PUT', body: JSON.stringify({ action: 'unblock', user_id: id }) });
   },
 
   async getServers(): Promise<ApiServer[]> {
@@ -120,7 +123,7 @@ export const adminApi = {
   },
 
   async toggleServer(id: string): Promise<string> {
-    const data = await apiFetch(`${URLS.servers}/${id}/toggle`, { method: 'PUT' });
+    const data = await apiFetch(URLS.servers, { method: 'PUT', body: JSON.stringify({ action: 'toggle', server_id: id }) });
     return data.status;
   },
 

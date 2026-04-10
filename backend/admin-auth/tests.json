@@ -1,11 +1,11 @@
 {
   "tests": [
     {
-      "name": "GET / returns 404 (root not handled)",
+      "name": "GET / without token returns 401",
       "method": "GET",
       "path": "/",
-      "expectedStatus": 404,
-      "expectedBody": {"error": "Not found"},
+      "expectedStatus": 401,
+      "expectedBody": {"error": "Unauthorized"},
       "bodyMatcher": "partial"
     }
   ]

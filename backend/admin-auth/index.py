@@ -1,8 +1,7 @@
 """
 Admin authentication: login, logout, verify token.
-POST /login  — принять email+password, вернуть JWT
-POST /logout — отозвать токен
-GET  /me     — проверить токен, вернуть профиль
+Все действия через POST / с полем action: login | logout | me
+GET / с заголовком X-Authorization — проверка токена
 """
 import json
 import os
@@ -21,16 +20,12 @@ CORS = {
     'Access-Control-Allow-Headers': 'Content-Type, X-Authorization',
 }
 
-def response(status, body, extra_headers=None):
-    headers = {**CORS, 'Content-Type': 'application/json'}
-    if extra_headers:
-        headers.update(extra_headers)
-    return {'statusCode': status, 'headers': headers, 'body': json.dumps(body)}
+def response(status, body):
+    return {'statusCode': status, 'headers': {**CORS, 'Content-Type': 'application/json'}, 'body': json.dumps(body)}
 
 def get_conn():
     return psycopg2.connect(os.environ['DATABASE_URL'])
 
-# --- Minimal JWT (HS256) ---
 def b64url(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).rstrip(b'=').decode()
 
@@ -59,43 +54,59 @@ def verify_jwt(token: str) -> dict | None:
 def hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
-# --- bcrypt via hashlib workaround: use simple pbkdf2 for comparison ---
-# Real bcrypt check — we use passlib-compatible hash stored in DB
 def check_password(plain: str, hashed: str) -> bool:
-    import hashlib as hl
-    # Support both bcrypt (from DB seeds) and our pbkdf2
     if hashed.startswith('pbkdf2:'):
-        _, _, iterations, salt, stored = hashed.split(':')
-        dk = hl.pbkdf2_hmac('sha256', plain.encode(), salt.encode(), int(iterations))
+        parts = hashed.split(':')
+        if len(parts) != 5:
+            return False
+        _, _, iterations, salt, stored = parts
+        dk = hashlib.pbkdf2_hmac('sha256', plain.encode(), salt.encode(), int(iterations))
         return base64.b64encode(dk).decode() == stored
-    # bcrypt fallback — try via crypt module
     try:
         import bcrypt
         return bcrypt.checkpw(plain.encode(), hashed.encode())
     except Exception:
         return False
 
-def hash_password(plain: str) -> str:
-    import hashlib as hl
-    import secrets
-    salt = secrets.token_hex(16)
-    dk = hl.pbkdf2_hmac('sha256', plain.encode(), salt.encode(), 260000)
-    return f'pbkdf2:sha256:260000:{salt}:{base64.b64encode(dk).decode()}'
-
 def handler(event: dict, context) -> dict:
     if event.get('httpMethod') == 'OPTIONS':
         return {'statusCode': 200, 'headers': CORS, 'body': ''}
 
     method = event.get('httpMethod', 'GET')
-    path   = event.get('path', '/')
-    ip     = (event.get('requestContext') or {}).get('identity', {}).get('sourceIp', '')
+    ip = (event.get('requestContext') or {}).get('identity', {}).get('sourceIp', '')
+    auth = event.get('headers', {}).get('X-Authorization', '')
+    token_str = auth.removeprefix('Bearer ').strip()
 
-    # ---- POST /login ----
-    if method == 'POST' and path.endswith('/login'):
-        body = json.loads(event.get('body') or '{}')
+    # ---- GET / — verify token (me) ----
+    if method == 'GET':
+        payload = verify_jwt(token_str)
+        if not payload:
+            return response(401, {'error': 'Unauthorized'})
+        t_hash = hash_token(token_str)
+        conn = get_conn()
+        cur  = conn.cursor()
+        cur.execute(f"SELECT revoked FROM {SCHEMA}.admin_sessions WHERE token_hash = %s", (t_hash,))
+        row = cur.fetchone()
+        conn.close()
+        if not row or row[0]:
+            return response(401, {'error': 'Session revoked'})
+        return response(200, {
+            'id': payload['sub'],
+            'email': payload['email'],
+            'name': payload.get('name', ''),
+            'is_admin': payload.get('is_admin', False),
+        })
+
+    if method != 'POST':
+        return response(405, {'error': 'Method not allowed'})
+
+    body = json.loads(event.get('body') or '{}')
+    action = body.get('action', '')
+
+    # ---- login ----
+    if action == 'login':
         email    = (body.get('email') or '').strip().lower()
         password = body.get('password') or ''
-
         if not email or not password:
             return response(400, {'error': 'Email and password required'})
 
@@ -119,9 +130,8 @@ def handler(event: dict, context) -> dict:
         if not check_password(password, pw_hash):
             return response(401, {'error': 'Invalid credentials'})
 
-        # Issue JWT
-        exp = int(time.time()) + 86400  # 24h
-        token = make_jwt({'sub': str(uid), 'email': db_email, 'name': name, 'is_admin': is_admin, 'exp': exp})
+        exp   = int(time.time()) + 86400
+        token = make_jwt({'sub': str(uid), 'email': db_email, 'name': name or db_email, 'is_admin': is_admin, 'exp': exp})
         t_hash = hash_token(token)
 
         conn2 = get_conn()
@@ -130,7 +140,6 @@ def handler(event: dict, context) -> dict:
             f"INSERT INTO {SCHEMA}.admin_sessions (user_id, token_hash, ip_address) VALUES (%s, %s, %s)",
             (str(uid), t_hash, ip)
         )
-        # Log
         cur2.execute(
             f"INSERT INTO {SCHEMA}.audit_logs (user_id, action, ip_address, meta) VALUES (%s, 'admin_login', %s, %s)",
             (str(uid), ip, json.dumps({'email': db_email}))
@@ -138,83 +147,17 @@ def handler(event: dict, context) -> dict:
         conn2.commit()
         conn2.close()
 
-        return response(200, {'token': token, 'name': name, 'email': db_email})
+        return response(200, {'token': token, 'name': name or db_email, 'email': db_email})
 
-    # ---- GET /me ----
-    if method == 'GET' and path.endswith('/me'):
-        auth = event.get('headers', {}).get('X-Authorization', '')
-        token = auth.removeprefix('Bearer ').strip()
-        payload = verify_jwt(token)
-        if not payload:
-            return response(401, {'error': 'Unauthorized'})
-
-        t_hash = hash_token(token)
-        conn = get_conn()
-        cur  = conn.cursor()
-        cur.execute(
-            f"SELECT revoked FROM {SCHEMA}.admin_sessions WHERE token_hash = %s",
-            (t_hash,)
-        )
-        row = cur.fetchone()
-        conn.close()
-
-        if not row or row[0]:
-            return response(401, {'error': 'Session revoked'})
-
-        return response(200, {
-            'id': payload['sub'],
-            'email': payload['email'],
-            'name': payload.get('name', ''),
-            'is_admin': payload.get('is_admin', False),
-        })
-
-    # ---- POST /logout ----
-    if method == 'POST' and path.endswith('/logout'):
-        auth = event.get('headers', {}).get('X-Authorization', '')
-        token = auth.removeprefix('Bearer ').strip()
-        if token:
-            t_hash = hash_token(token)
+    # ---- logout ----
+    if action == 'logout':
+        if token_str:
+            t_hash = hash_token(token_str)
             conn = get_conn()
             cur  = conn.cursor()
-            cur.execute(
-                f"UPDATE {SCHEMA}.admin_sessions SET revoked = true WHERE token_hash = %s",
-                (t_hash,)
-            )
+            cur.execute(f"UPDATE {SCHEMA}.admin_sessions SET revoked = true WHERE token_hash = %s", (t_hash,))
             conn.commit()
             conn.close()
         return response(200, {'ok': True})
 
-    # ---- POST /register (create admin) ----
-    if method == 'POST' and path.endswith('/register'):
-        # Only allow if no admin exists yet (first-time setup)
-        conn = get_conn()
-        cur  = conn.cursor()
-        cur.execute(f"SELECT COUNT(*) FROM {SCHEMA}.users WHERE is_admin = true")
-        count = cur.fetchone()[0]
-        conn.close()
-
-        if count > 0:
-            return response(403, {'error': 'Admin already exists'})
-
-        body  = json.loads(event.get('body') or '{}')
-        email = (body.get('email') or '').strip().lower()
-        name  = (body.get('name') or 'Admin').strip()
-        pw    = body.get('password') or ''
-
-        if not email or len(pw) < 8:
-            return response(400, {'error': 'Email and password (8+ chars) required'})
-
-        pw_hash = hash_password(pw)
-        conn2 = get_conn()
-        cur2  = conn2.cursor()
-        cur2.execute(
-            f"INSERT INTO {SCHEMA}.users (email, name, password_hash, is_admin) VALUES (%s, %s, %s, true) RETURNING id",
-            (email, name, pw_hash)
-        )
-        uid = cur2.fetchone()[0]
-        conn2.commit()
-        conn2.close()
-
-        return response(201, {'ok': True, 'id': str(uid)})
-
-    return response(404, {'error': 'Not found'})
+    return response(400, {'error': 'Unknown action. Use: login, logout'})

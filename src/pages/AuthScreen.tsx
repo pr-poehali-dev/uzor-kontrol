@@ -114,6 +114,7 @@ export function AuthScreen({ onAuth }: AuthScreenProps) {
           )}
         </div>
       </div>
+      <p className="text-[10px] text-muted-foreground/50 text-center mt-6">ИНН 233907083873</p>
     </div>
   );
 }

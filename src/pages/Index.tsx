@@ -118,6 +118,11 @@ export default function Index() {
           <NavItem icon="Settings" label="Настройки" active={screen === 'settings'} onClick={() => setScreen('settings')} />
         </div>
       )}
+
+      {/* INN Footer */}
+      <div className="bg-background border-t border-white/5 py-2 px-4 text-center">
+        <p className="text-[10px] text-muted-foreground/50">ИНН 233907083873</p>
+      </div>
     </div>
   );
 }

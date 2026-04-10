@@ -4,6 +4,7 @@ import { ConnectButton } from '@/components/app/ConnectButton';
 import { StatusBadge } from '@/components/app/StatusBadge';
 import { StatsGrid } from '@/components/app/StatsGrid';
 import { VpnConfigModal } from '@/components/app/VpnConfigModal';
+import { HowToConnect } from '@/components/app/HowToConnect';
 import Icon from '@/components/ui/icon';
 
 interface HomeScreenProps {
@@ -99,6 +100,8 @@ export function HomeScreen({ onOpenServers, selectedServer }: HomeScreenProps) {
             Показать QR-код / конфиг
           </button>
         )}
+
+        {!isConnected && <HowToConnect />}
 
         <button
           onClick={onOpenServers}

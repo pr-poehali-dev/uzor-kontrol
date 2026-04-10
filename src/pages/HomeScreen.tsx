@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ConnectionState, Server, MOCK_SERVERS, api } from '@/lib/api';
+import { ConnectionState, Server, VpnConfig, api } from '@/lib/api';
 import { ConnectButton } from '@/components/app/ConnectButton';
 import { StatusBadge } from '@/components/app/StatusBadge';
 import { StatsGrid } from '@/components/app/StatsGrid';
+import { VpnConfigModal } from '@/components/app/VpnConfigModal';
 import Icon from '@/components/ui/icon';
 
 interface HomeScreenProps {
@@ -19,7 +20,9 @@ export function HomeScreen({ onOpenServers, selectedServer }: HomeScreenProps) {
     uploadSpeed: 0,
     connectedAt: null,
   });
-
+  const [vpnConfig, setVpnConfig] = useState<VpnConfig | null>(null);
+  const [showConfig, setShowConfig] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [ticker, setTicker] = useState(0);
 
   useEffect(() => {
@@ -31,18 +34,23 @@ export function HomeScreen({ onOpenServers, selectedServer }: HomeScreenProps) {
   }, [connState.status]);
 
   const handleToggle = useCallback(async () => {
+    setError(null);
+
     if (connState.status === 'connected') {
       setConnState(s => ({ ...s, status: 'connecting' }));
       try {
-        await api.disconnect();
+        await api.disconnect(selectedServer.id);
+        setVpnConfig(null);
         setConnState(s => ({ ...s, status: 'disconnected', server: null, connectedAt: null, latency: 0, downloadSpeed: 0, uploadSpeed: 0 }));
       } catch {
-        setConnState(s => ({ ...s, status: 'connected' })); // откат при ошибке
+        setConnState(s => ({ ...s, status: 'connected' }));
       }
     } else if (connState.status === 'disconnected') {
       setConnState(s => ({ ...s, status: 'connecting' }));
       try {
-        await api.connect(selectedServer.id);
+        const result = await api.connect(selectedServer.id);
+        setVpnConfig(result);
+        setShowConfig(true);
         setConnState({
           status: 'connected',
           server: selectedServer,
@@ -51,8 +59,10 @@ export function HomeScreen({ onOpenServers, selectedServer }: HomeScreenProps) {
           uploadSpeed: parseFloat((Math.random() * 20 + 5).toFixed(1)),
           connectedAt: new Date(),
         });
-      } catch {
-        setConnState(s => ({ ...s, status: 'disconnected' })); // откат при ошибке
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : 'Ошибка подключения';
+        setError(msg);
+        setConnState(s => ({ ...s, status: 'disconnected' }));
       }
     }
   }, [connState.status, selectedServer]);
@@ -61,7 +71,6 @@ export function HomeScreen({ onOpenServers, selectedServer }: HomeScreenProps) {
 
   return (
     <div className="flex flex-col items-center min-h-screen bg-background px-5 pt-16 pb-8 gap-8">
-      {/* Header */}
       <div className="flex w-full items-center justify-between">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-lg bg-primary/20 border border-primary/40 flex items-center justify-center">
@@ -72,11 +81,25 @@ export function HomeScreen({ onOpenServers, selectedServer }: HomeScreenProps) {
         <StatusBadge status={connState.status} />
       </div>
 
-      {/* Connect Button */}
       <div className="flex-1 flex flex-col items-center justify-center gap-10 w-full">
         <ConnectButton status={connState.status} onClick={handleToggle} />
 
-        {/* Server Info */}
+        {error && (
+          <div className="w-full max-w-xs p-3 rounded-2xl bg-red-500/10 border border-red-500/30 text-center">
+            <p className="text-sm text-red-400">{error}</p>
+          </div>
+        )}
+
+        {isConnected && vpnConfig && (
+          <button
+            onClick={() => setShowConfig(true)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-primary/10 border border-primary/30 text-primary text-sm font-medium hover:bg-primary/20 transition-all active:scale-95"
+          >
+            <Icon name="QrCode" size={16} />
+            Показать QR-код / конфиг
+          </button>
+        )}
+
         <button
           onClick={onOpenServers}
           className="flex items-center gap-3 px-5 py-3 rounded-2xl bg-white/5 border border-white/10 hover:border-white/20 transition-all active:scale-95 w-full max-w-xs"
@@ -97,8 +120,17 @@ export function HomeScreen({ onOpenServers, selectedServer }: HomeScreenProps) {
         </button>
       </div>
 
-      {/* Stats */}
       <StatsGrid state={{ ...connState, server: connState.server }} key={ticker} />
+
+      {showConfig && vpnConfig && (
+        <VpnConfigModal
+          config={vpnConfig}
+          serverName={selectedServer.name}
+          onClose={() => setShowConfig(false)}
+        />
+      )}
     </div>
   );
 }
+
+export default HomeScreen;

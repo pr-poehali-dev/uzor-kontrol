@@ -1,0 +1,45 @@
+{
+  "tests": [
+    {
+      "name": "OPTIONS returns 200 with CORS headers",
+      "method": "OPTIONS",
+      "path": "/",
+      "expectedStatus": 200
+    },
+    {
+      "name": "GET / without auth returns 401",
+      "method": "GET",
+      "path": "/",
+      "expectedStatus": 401,
+      "expectedBody": {"error": "Unauthorized"},
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "POST connect without auth returns 401",
+      "method": "POST",
+      "path": "/",
+      "body": {"action": "connect", "server_id": "test"},
+      "expectedStatus": 401,
+      "expectedBody": {"error": "Unauthorized"},
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "POST disconnect without auth returns 401",
+      "method": "POST",
+      "path": "/",
+      "body": {"action": "disconnect", "server_id": "test"},
+      "expectedStatus": 401,
+      "expectedBody": {"error": "Unauthorized"},
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "POST without server_id and without auth returns 401",
+      "method": "POST",
+      "path": "/",
+      "body": {"action": "connect"},
+      "expectedStatus": 401,
+      "expectedBody": {"error": "Unauthorized"},
+      "bodyMatcher": "partial"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "tests": [
+    {
+      "name": "GET / without auth returns 401",
+      "method": "GET",
+      "path": "/",
+      "expectedStatus": 401,
+      "expectedBody": {"error": "Unauthorized"},
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "POST / without auth returns 401",
+      "method": "POST",
+      "path": "/",
+      "body": {"plan_id": "pro"},
+      "expectedStatus": 401,
+      "bodyMatcher": "partial"
+    }
+  ]
+}

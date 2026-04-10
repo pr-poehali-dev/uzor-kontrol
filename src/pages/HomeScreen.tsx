@@ -33,19 +33,27 @@ export function HomeScreen({ onOpenServers, selectedServer }: HomeScreenProps) {
   const handleToggle = useCallback(async () => {
     if (connState.status === 'connected') {
       setConnState(s => ({ ...s, status: 'connecting' }));
-      await api.disconnect();
-      setConnState(s => ({ ...s, status: 'disconnected', server: null, connectedAt: null, latency: 0, downloadSpeed: 0, uploadSpeed: 0 }));
+      try {
+        await api.disconnect();
+        setConnState(s => ({ ...s, status: 'disconnected', server: null, connectedAt: null, latency: 0, downloadSpeed: 0, uploadSpeed: 0 }));
+      } catch {
+        setConnState(s => ({ ...s, status: 'connected' })); // откат при ошибке
+      }
     } else if (connState.status === 'disconnected') {
       setConnState(s => ({ ...s, status: 'connecting' }));
-      await api.connect(selectedServer.id);
-      setConnState({
-        status: 'connected',
-        server: selectedServer,
-        latency: selectedServer.latency + Math.floor(Math.random() * 5),
-        downloadSpeed: parseFloat((Math.random() * 50 + 10).toFixed(1)),
-        uploadSpeed: parseFloat((Math.random() * 20 + 5).toFixed(1)),
-        connectedAt: new Date(),
-      });
+      try {
+        await api.connect(selectedServer.id);
+        setConnState({
+          status: 'connected',
+          server: selectedServer,
+          latency: selectedServer.latency + Math.floor(Math.random() * 5),
+          downloadSpeed: parseFloat((Math.random() * 50 + 10).toFixed(1)),
+          uploadSpeed: parseFloat((Math.random() * 20 + 5).toFixed(1)),
+          connectedAt: new Date(),
+        });
+      } catch {
+        setConnState(s => ({ ...s, status: 'disconnected' })); // откат при ошибке
+      }
     }
   }, [connState.status, selectedServer]);
 

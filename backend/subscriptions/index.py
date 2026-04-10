@@ -62,9 +62,14 @@ def handler(event: dict, context) -> dict:
     qs     = event.get('queryStringParameters') or {}
     path   = event.get('path', '/')
 
-    # ---- POST /webhook — публичный, без авторизации ----
+    # ---- POST /webhook — только для внутреннего использования, требует webhook_secret ----
     if method == 'POST' and path.endswith('/webhook'):
         body = json.loads(event.get('body') or '{}')
+        # Проверяем секретный ключ webhook
+        webhook_secret = os.environ.get('WEBHOOK_SECRET', '')
+        provided_secret = event.get('headers', {}).get('X-Webhook-Secret', '')
+        if webhook_secret and provided_secret != webhook_secret:
+            return resp(403, {'error': 'Forbidden'})
         payment_id = body.get('payment_id', '')
         new_status = body.get('status', '')
         if not payment_id or new_status not in ('paid', 'failed', 'cancelled'):

@@ -49,7 +49,8 @@ function formatExpiry(iso: string | null) {
 }
 
 export function SettingsScreen({ onBack, onLogout, onOpenPlans }: SettingsScreenProps) {
-  const [autoConnect, setAutoConnect] = useState(false);
+  const [autoConnect, setAutoConnect]     = useState(false);
+  const [autoReconnect, setAutoReconnect] = useState(true);
   const [notifications, setNotifications] = useState(true);
   const [language, setLanguage] = useState('English');
   const [subscription, setSubscription] = useState<Subscription | null>(null);
@@ -103,7 +104,7 @@ export function SettingsScreen({ onBack, onLogout, onOpenPlans }: SettingsScreen
         <p className="text-xs text-muted-foreground uppercase tracking-widest mb-1 px-1">Подключение</p>
         <div className="bg-white/5 border border-white/10 rounded-2xl px-4 divide-y divide-white/5 mb-5">
           <ToggleRow icon="Zap" label="Авто-подключение" description="Подключаться при запуске" value={autoConnect} onChange={setAutoConnect} />
-          <ToggleRow icon="RefreshCw" label="Авто-переподключение" description="При разрыве соединения" value={true} onChange={() => {}} />
+          <ToggleRow icon="RefreshCw" label="Авто-переподключение" description="При разрыве соединения" value={autoReconnect} onChange={setAutoReconnect} />
         </div>
 
         {/* Preferences */}

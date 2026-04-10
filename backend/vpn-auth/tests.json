@@ -1,0 +1,28 @@
+{
+  "tests": [
+    {
+      "name": "GET / without token returns 401",
+      "method": "GET",
+      "path": "/",
+      "expectedStatus": 401,
+      "expectedBody": {"error": "Unauthorized"},
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "POST login with empty body returns 400",
+      "method": "POST",
+      "path": "/",
+      "body": {"action": "login", "email": "", "password": ""},
+      "expectedStatus": 400,
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "POST unknown action returns 400",
+      "method": "POST",
+      "path": "/",
+      "body": {"action": "unknown"},
+      "expectedStatus": 400,
+      "bodyMatcher": "partial"
+    }
+  ]
+}

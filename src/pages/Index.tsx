@@ -33,7 +33,8 @@ function NavItem({ icon, label, active, onClick }: NavItemProps) {
 const NAV_SCREENS: Screen[] = ['home', 'servers', 'settings'];
 
 export default function Index() {
-  const [screen, setScreen] = useState<Screen>('auth');
+  const hasToken = !!localStorage.getItem('vpn_token');
+  const [screen, setScreen] = useState<Screen>(hasToken ? 'home' : 'auth');
   const [selectedServer, setSelectedServer] = useState<Server>(MOCK_SERVERS[0]);
   const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null);
   const [subscription, setSubscription] = useState<Subscription>({ plan: 'free', status: 'active', expires_at: null });
@@ -42,11 +43,16 @@ export default function Index() {
     if (screen === 'auth') return;
     subsApi.getPlansAndSubscription()
       .then(d => setSubscription(d.subscription))
-      .catch(() => {});
+      .catch(() => {}); // подписка недоступна — показываем free по умолчанию
   }, [screen]);
 
-  function handleAuth() {
+  function handleAuth(_token: string) {
     setScreen('home');
+  }
+
+  function handleLogout() {
+    localStorage.removeItem('vpn_token');
+    setScreen('auth');
   }
 
   function handlePlanSelected(plan: Plan) {
@@ -90,7 +96,7 @@ export default function Index() {
         {screen === 'settings' && (
           <SettingsScreen
             onBack={() => setScreen('home')}
-            onLogout={() => setScreen('auth')}
+            onLogout={handleLogout}
             onOpenPlans={() => setScreen('plans')}
           />
         )}

@@ -1,8 +1,9 @@
 const URLS = {
-  auth:    'https://functions.poehali.dev/61dedd83-5c5e-4d8f-bb3f-403446321939',
-  users:   'https://functions.poehali.dev/22f2fc4c-854e-4d23-9972-31df3dc52d2c',
-  servers: 'https://functions.poehali.dev/37e5c79e-2032-4382-bb5e-eb9acf845120',
-  logs:    'https://functions.poehali.dev/42d0590b-f3b2-4980-9647-57d0147022db',
+  auth:      'https://functions.poehali.dev/61dedd83-5c5e-4d8f-bb3f-403446321939',
+  users:     'https://functions.poehali.dev/22f2fc4c-854e-4d23-9972-31df3dc52d2c',
+  servers:   'https://functions.poehali.dev/37e5c79e-2032-4382-bb5e-eb9acf845120',
+  logs:      'https://functions.poehali.dev/42d0590b-f3b2-4980-9647-57d0147022db',
+  dashboard: 'https://functions.poehali.dev/56b9be50-1523-4531-9f8c-75636e5b5597',
 };
 
 export interface AdminProfile {
@@ -131,4 +132,53 @@ export const adminApi = {
     const data = await apiFetch(URLS.logs);
     return data.logs;
   },
+
+  async getDashboard(): Promise<DashboardData> {
+    return apiFetch(URLS.dashboard);
+  },
 };
+
+export interface DashboardStats {
+  total_users: number;
+  new_users_week: number;
+  active_connections: number;
+  total_servers: number;
+  online_servers: number;
+  avg_load: number;
+  errors_24h: number;
+}
+
+export interface DashboardServer {
+  id: string;
+  name: string;
+  country: string;
+  city: string;
+  flag: string;
+  ip: string;
+  load: number;
+  status: string;
+  recommended: boolean;
+  latency: number;
+  uptime: number;
+  connections: number;
+}
+
+export interface RecentLog {
+  action: string;
+  ip: string | null;
+  timestamp: string;
+  user: string | null;
+  meta: Record<string, unknown>;
+}
+
+export interface DashboardData {
+  stats: DashboardStats;
+  servers: DashboardServer[];
+  charts: {
+    server_load: { name: string; load: number; flag: string }[];
+    server_latency: { name: string; latency: number }[];
+    plans: { name: string; value: number }[];
+    activity: { time: string; events: number }[];
+  };
+  recent_logs: RecentLog[];
+}

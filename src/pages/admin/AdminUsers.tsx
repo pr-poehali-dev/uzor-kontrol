@@ -24,6 +24,75 @@ function timeAgoLabel(iso: string | null) {
   return `${Math.floor(h / 24)}d ago`;
 }
 
+const PLAN_COLORS: Record<string, string> = {
+  free:     'text-zinc-400 border-zinc-500/30 bg-zinc-500/10',
+  pro:      'text-blue-400 border-blue-500/30 bg-blue-500/10',
+  business: 'text-green-400 border-green-500/30 bg-green-500/10',
+};
+
+interface PlanSelectorProps {
+  userId: string;
+  currentPlan: string;
+  onChange: (id: string, plan: string) => void;
+}
+
+function PlanSelector({ userId, currentPlan, onChange }: PlanSelectorProps) {
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  async function select(plan: string) {
+    if (plan === currentPlan) { setOpen(false); return; }
+    setSaving(true);
+    try {
+      await adminApi.setUserPlan(userId, plan);
+      onChange(userId, plan);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Error');
+    } finally {
+      setSaving(false);
+      setOpen(false);
+    }
+  }
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen(o => !o)}
+        disabled={saving}
+        className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium border transition-all capitalize
+          ${PLAN_COLORS[currentPlan] ?? PLAN_COLORS.free}
+          ${saving ? 'opacity-50' : 'hover:opacity-80'}`}
+      >
+        {saving
+          ? <span className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
+          : currentPlan
+        }
+        <Icon name="ChevronDown" size={10} />
+      </button>
+
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute left-0 top-full mt-1 z-20 bg-card border border-white/15 rounded-xl shadow-xl overflow-hidden min-w-[110px]">
+            {(['free', 'pro', 'business'] as const).map(p => (
+              <button
+                key={p}
+                onClick={() => select(p)}
+                className={`w-full text-left px-3 py-2 text-xs font-medium capitalize transition-colors hover:bg-white/10 flex items-center gap-2
+                  ${p === currentPlan ? 'text-foreground bg-white/5' : 'text-muted-foreground'}`}
+              >
+                <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${p === 'free' ? 'bg-zinc-400' : p === 'pro' ? 'bg-blue-400' : 'bg-green-400'}`} />
+                {p}
+                {p === currentPlan && <Icon name="Check" size={10} className="ml-auto" />}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 const planBadge = (p: string) => {
   const map: Record<string, 'neutral' | 'info' | 'success'> = { free: 'neutral', pro: 'info', business: 'success' };
   return <Badge variant={map[p] ?? 'neutral'}>{p}</Badge>;
@@ -213,6 +282,10 @@ export default function AdminUsers() {
     );
   }, [users, query, plan, status]);
 
+  function updatePlan(id: string, newPlan: string) {
+    setUsers(prev => prev.map(u => u.id === id ? { ...u, plan: newPlan } : u));
+  }
+
   async function toggleBlock(user: ApiUser) {
     try {
       if (user.status === 'blocked') {
@@ -310,7 +383,12 @@ export default function AdminUsers() {
                         </div>
                       </div>
                     </td>
-                    <td className="px-4 py-4">{planBadge(user.plan)}</td>
+                    <td className="px-4 py-4">
+                      {user.is_admin
+                        ? planBadge(user.plan)
+                        : <PlanSelector userId={user.id} currentPlan={user.plan} onChange={updatePlan} />
+                      }
+                    </td>
                     <td className="px-4 py-4">{statusBadge(user.status)}</td>
                     <td className="px-4 py-4 text-muted-foreground hidden md:table-cell">{formatDate(user.registered_at)}</td>
                     <td className="px-4 py-4 text-muted-foreground hidden lg:table-cell">{timeAgoLabel(user.last_seen)}</td>

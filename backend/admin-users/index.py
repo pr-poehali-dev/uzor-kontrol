@@ -105,9 +105,24 @@ def handler(event: dict, context) -> dict:
         action  = body.get('action', '')
         user_id = body.get('user_id', '')
 
-        if action not in ('block', 'unblock') or not user_id:
+        if action not in ('block', 'unblock', 'set_plan') or not user_id:
             conn.close()
-            return resp(400, {'error': 'action (block|unblock) and user_id required'})
+            return resp(400, {'error': 'action and user_id required'})
+
+        if action == 'set_plan':
+            new_plan = body.get('plan', 'free')
+            if new_plan not in ('free', 'pro', 'business'):
+                conn.close()
+                return resp(400, {'error': 'plan must be free|pro|business'})
+            cur.execute(
+                f"""INSERT INTO {SCHEMA}.subscriptions (user_id, plan, status)
+                    VALUES (%s, %s, 'active')
+                    ON CONFLICT (user_id) DO UPDATE SET plan = %s""",
+                (user_id, new_plan, new_plan)
+            )
+            conn.commit()
+            conn.close()
+            return resp(200, {'ok': True, 'plan': new_plan})
 
         new_status = 'blocked' if action == 'block' else 'active'
         cur.execute(

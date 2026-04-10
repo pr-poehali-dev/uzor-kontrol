@@ -68,7 +68,7 @@ function clearToken() {
 
 function authHeader(): Record<string, string> {
   const t = getToken();
-  return t ? { Authorization: `Bearer ${t}` } : {};
+  return t ? { 'X-Authorization': `Bearer ${t}` } : {};
 }
 
 async function apiFetch(url: string, opts: RequestInit = {}) {
@@ -123,6 +123,10 @@ export const adminApi = {
 
   async unblockUser(id: string): Promise<void> {
     await apiFetch(URLS.users, { method: 'PUT', body: JSON.stringify({ action: 'unblock', user_id: id }) });
+  },
+
+  async setUserPlan(id: string, plan: string): Promise<void> {
+    await apiFetch(URLS.users, { method: 'PUT', body: JSON.stringify({ action: 'set_plan', user_id: id, plan }) });
   },
 
   async getServers(): Promise<ApiServer[]> {

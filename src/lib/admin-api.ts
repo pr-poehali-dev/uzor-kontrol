@@ -110,6 +110,13 @@ export const adminApi = {
     return data.users;
   },
 
+  async createUser(data: { email: string; name: string; password: string; plan: string }): Promise<void> {
+    await apiFetch(URLS.users, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
   async blockUser(id: string): Promise<void> {
     await apiFetch(URLS.users, { method: 'PUT', body: JSON.stringify({ action: 'block', user_id: id }) });
   },

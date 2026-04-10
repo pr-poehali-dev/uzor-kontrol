@@ -34,6 +34,157 @@ const statusBadge = (s: string) => {
   return <Badge variant={map[s] ?? 'neutral'}>{s}</Badge>;
 };
 
+// --- Create User Modal ---
+interface CreateUserModalProps {
+  onClose: () => void;
+  onCreated: () => void;
+}
+
+function CreateUserModal({ onClose, onCreated }: CreateUserModalProps) {
+  const [form, setForm] = useState({ name: '', email: '', password: '', plan: 'free' });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  function set(k: string, v: string) {
+    setForm(f => ({ ...f, [k]: v }));
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+    try {
+      await adminApi.createUser(form);
+      onCreated();
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error creating user');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      {/* Backdrop */}
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+
+      {/* Modal */}
+      <div className="relative w-full max-w-md bg-card border border-white/15 rounded-2xl shadow-2xl p-6">
+        <div className="flex items-center justify-between mb-5">
+          <div>
+            <h2 className="text-lg font-semibold">Create User</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">New account will be added to the system</p>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center hover:bg-white/10 transition-all">
+            <Icon name="X" size={14} />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          {/* Name */}
+          <div>
+            <label className="text-xs text-muted-foreground mb-1.5 block">Full Name</label>
+            <div className="relative">
+              <Icon name="User" size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="text"
+                placeholder="John Doe"
+                value={form.name}
+                onChange={e => set('name', e.target.value)}
+                className="w-full bg-white/5 border border-white/10 rounded-xl pl-9 pr-4 py-2.5 text-sm outline-none focus:border-primary/50 transition-colors placeholder:text-muted-foreground"
+              />
+            </div>
+          </div>
+
+          {/* Email */}
+          <div>
+            <label className="text-xs text-muted-foreground mb-1.5 block">Email <span className="text-red-400">*</span></label>
+            <div className="relative">
+              <Icon name="Mail" size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="email"
+                placeholder="user@example.com"
+                value={form.email}
+                onChange={e => set('email', e.target.value)}
+                required
+                className="w-full bg-white/5 border border-white/10 rounded-xl pl-9 pr-4 py-2.5 text-sm outline-none focus:border-primary/50 transition-colors placeholder:text-muted-foreground"
+              />
+            </div>
+          </div>
+
+          {/* Password */}
+          <div>
+            <label className="text-xs text-muted-foreground mb-1.5 block">Password <span className="text-red-400">*</span></label>
+            <div className="relative">
+              <Icon name="Lock" size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="password"
+                placeholder="Min. 6 characters"
+                value={form.password}
+                onChange={e => set('password', e.target.value)}
+                required
+                minLength={6}
+                className="w-full bg-white/5 border border-white/10 rounded-xl pl-9 pr-4 py-2.5 text-sm outline-none focus:border-primary/50 transition-colors placeholder:text-muted-foreground"
+              />
+            </div>
+          </div>
+
+          {/* Plan */}
+          <div>
+            <label className="text-xs text-muted-foreground mb-1.5 block">Subscription Plan</label>
+            <div className="flex gap-2">
+              {(['free', 'pro', 'business'] as const).map(p => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => set('plan', p)}
+                  className={`flex-1 py-2.5 rounded-xl text-xs font-medium border transition-all capitalize
+                    ${form.plan === p
+                      ? 'bg-primary/20 border-primary/50 text-primary'
+                      : 'bg-white/5 border-white/10 text-muted-foreground hover:border-white/20'
+                    }`}
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {error && (
+            <div className="flex items-center gap-2 p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
+              <Icon name="AlertCircle" size={14} />
+              {error}
+            </div>
+          )}
+
+          <div className="flex gap-3 pt-1">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 py-3 rounded-xl bg-white/5 border border-white/10 text-sm font-medium hover:bg-white/10 transition-all"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="flex-1 py-3 rounded-xl bg-primary text-white text-sm font-semibold hover:bg-primary/90 transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {loading ? (
+                <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Creating...</>
+              ) : (
+                <><Icon name="UserPlus" size={14} /> Create User</>
+              )}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// --- Main Page ---
 export default function AdminUsers() {
   const [users, setUsers] = useState<ApiUser[]>([]);
   const [loading, setLoading] = useState(true);
@@ -41,13 +192,17 @@ export default function AdminUsers() {
   const [query, setQuery] = useState('');
   const [plan, setPlan] = useState<PlanFilter>('all');
   const [status, setStatus] = useState<StatusFilter>('all');
+  const [showCreate, setShowCreate] = useState(false);
 
-  useEffect(() => {
+  function loadUsers() {
+    setLoading(true);
     adminApi.getUsers()
       .then(setUsers)
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
-  }, []);
+  }
+
+  useEffect(() => { loadUsers(); }, []);
 
   const filtered = useMemo(() => {
     const q = query.toLowerCase();
@@ -74,9 +229,25 @@ export default function AdminUsers() {
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
+      {showCreate && (
+        <CreateUserModal
+          onClose={() => setShowCreate(false)}
+          onCreated={loadUsers}
+        />
+      )}
+
       <PageHeader
         title="Users"
         description={loading ? 'Loading...' : `${users.length} total · ${users.filter(u => u.status === 'active').length} active`}
+        actions={
+          <button
+            onClick={() => setShowCreate(true)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-white text-sm font-semibold hover:bg-primary/90 transition-all active:scale-95"
+          >
+            <Icon name="UserPlus" size={15} />
+            Add User
+          </button>
+        }
       />
 
       <div className="flex flex-wrap items-center gap-3 mb-5">
@@ -122,7 +293,7 @@ export default function AdminUsers() {
                   <th className="text-left px-4 py-3.5 text-xs text-muted-foreground font-medium uppercase tracking-wider hidden md:table-cell">Registered</th>
                   <th className="text-left px-4 py-3.5 text-xs text-muted-foreground font-medium uppercase tracking-wider hidden lg:table-cell">Last seen</th>
                   <th className="text-left px-4 py-3.5 text-xs text-muted-foreground font-medium uppercase tracking-wider hidden lg:table-cell">Live</th>
-                  <th className="px-4 py-3.5 w-10" />
+                  <th className="px-4 py-3.5 w-24" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
@@ -173,7 +344,16 @@ export default function AdminUsers() {
           </div>
         )}
         {!loading && filtered.length === 0 && (
-          <div className="py-16 text-center text-muted-foreground">No users match your filters</div>
+          <div className="py-16 text-center">
+            <p className="text-muted-foreground mb-3">No users match your filters</p>
+            <button
+              onClick={() => setShowCreate(true)}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-primary/10 border border-primary/30 text-primary text-sm font-medium hover:bg-primary/20 transition-all"
+            >
+              <Icon name="UserPlus" size={14} />
+              Create first user
+            </button>
+          </div>
         )}
       </div>
     </div>

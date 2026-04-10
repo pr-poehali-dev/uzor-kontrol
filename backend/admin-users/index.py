@@ -1,6 +1,7 @@
 """
-Admin Users API: list users, block/unblock.
+Admin Users API: list users, create, block/unblock.
 GET  / — список пользователей
+POST / body: {"name": "...", "email": "...", "password": "...", "plan": "free|pro|business"}
 PUT  / body: {"action": "block"|"unblock", "user_id": "..."}
 """
 import json
@@ -9,6 +10,7 @@ import hashlib
 import hmac
 import base64
 import time
+import secrets
 import psycopg2
 import psycopg2.extras
 
@@ -117,6 +119,49 @@ def handler(event: dict, context) -> dict:
         conn.commit()
         conn.close()
         return resp(200, {'ok': True, 'status': new_status})
+
+    # ---- POST / — create user ----
+    if method == 'POST':
+        body     = json.loads(event.get('body') or '{}')
+        email    = (body.get('email') or '').strip().lower()
+        name     = (body.get('name') or '').strip()
+        password = body.get('password') or ''
+        plan     = body.get('plan', 'free')
+
+        if not email or not password:
+            conn.close()
+            return resp(400, {'error': 'Email and password required'})
+        if len(password) < 6:
+            conn.close()
+            return resp(400, {'error': 'Password must be at least 6 characters'})
+        if plan not in ('free', 'pro', 'business'):
+            plan = 'free'
+
+        # Check duplicate
+        cur.execute(f"SELECT id FROM {SCHEMA}.users WHERE email = %s", (email,))
+        if cur.fetchone():
+            conn.close()
+            return resp(409, {'error': 'User with this email already exists'})
+
+        # Hash password
+        salt    = secrets.token_hex(16)
+        dk      = hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), 260000)
+        pw_hash = f'pbkdf2:sha256:260000:{salt}:{base64.b64encode(dk).decode()}'
+
+        cur.execute(
+            f"INSERT INTO {SCHEMA}.users (email, name, password_hash, is_admin) VALUES (%s, %s, %s, false) RETURNING id",
+            (email, name or email.split('@')[0], pw_hash)
+        )
+        new_id = str(cur.fetchone()['id'])
+
+        # Create subscription
+        cur.execute(
+            f"INSERT INTO {SCHEMA}.subscriptions (user_id, plan, status) VALUES (%s, %s, 'active')",
+            (new_id, plan)
+        )
+        conn.commit()
+        conn.close()
+        return resp(201, {'ok': True, 'id': new_id})
 
     conn.close()
     return resp(405, {'error': 'Method not allowed'})

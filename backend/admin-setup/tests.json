@@ -1,0 +1,13 @@
+{
+  "tests": [
+    {
+      "name": "POST without setup_key returns 403",
+      "method": "POST",
+      "path": "/",
+      "body": {"password": "test1234", "setup_key": "wrong"},
+      "expectedStatus": 403,
+      "expectedBody": {"error": "Invalid setup key"},
+      "bodyMatcher": "partial"
+    }
+  ]
+}

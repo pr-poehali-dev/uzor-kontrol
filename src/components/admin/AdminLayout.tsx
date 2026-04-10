@@ -1,6 +1,7 @@
 import { ReactNode, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import Icon from '@/components/ui/icon';
+import { useAdminAuth } from '@/lib/admin-auth-context';
 
 interface NavItem {
   path: string;
@@ -23,6 +24,7 @@ interface AdminLayoutProps {
 export function AdminLayout({ children }: AdminLayoutProps) {
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(false);
+  const { user, logout } = useAdminAuth();
 
   return (
     <div className="flex h-screen bg-background text-foreground overflow-hidden">
@@ -61,6 +63,26 @@ export function AdminLayout({ children }: AdminLayoutProps) {
             );
           })}
         </nav>
+
+        {/* User + Logout */}
+        {user && (
+          <div className={`mx-2 mb-2 p-3 rounded-xl bg-white/5 border border-white/10 ${collapsed ? 'flex justify-center' : ''}`}>
+            {!collapsed && (
+              <div className="mb-2">
+                <p className="text-xs font-medium text-foreground truncate">{user.name}</p>
+                <p className="text-[10px] text-muted-foreground truncate">{user.email}</p>
+              </div>
+            )}
+            <button
+              onClick={logout}
+              className={`flex items-center gap-2 text-xs text-muted-foreground hover:text-red-400 transition-colors ${collapsed ? '' : 'w-full'}`}
+              title="Sign out"
+            >
+              <Icon name="LogOut" size={14} />
+              {!collapsed && <span>Sign out</span>}
+            </button>
+          </div>
+        )}
 
         {/* Collapse button */}
         <button

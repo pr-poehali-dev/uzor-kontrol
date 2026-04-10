@@ -1,0 +1,12 @@
+{
+  "tests": [
+    {
+      "name": "GET / returns 404 (root not handled)",
+      "method": "GET",
+      "path": "/",
+      "expectedStatus": 404,
+      "expectedBody": {"error": "Not found"},
+      "bodyMatcher": "partial"
+    }
+  ]
+}

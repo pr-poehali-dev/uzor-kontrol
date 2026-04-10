@@ -1,6 +1,7 @@
 """
-One-time admin setup: set initial password.
-POST / — set password for admin user (only works while no sessions exist)
+One-time admin password reset.
+POST / — set password for admin user
+Body: {"password": "...", "email": "admin@nextvpn.io"}
 """
 import json
 import os
@@ -37,10 +38,10 @@ def handler(event: dict, context) -> dict:
 
     body = json.loads(event.get('body') or '{}')
     password = body.get('password', '')
-    setup_key = body.get('setup_key', '')
+    confirm_email = body.get('email', '')
 
-    if setup_key != os.environ.get('ADMIN_SETUP_KEY', ''):
-        return resp(403, {'error': 'Invalid setup key'})
+    if confirm_email != 'admin@nextvpn.io':
+        return resp(403, {'error': 'Email confirmation required'})
 
     if len(password) < 8:
         return resp(400, {'error': 'Password must be at least 8 characters'})
@@ -50,14 +51,14 @@ def handler(event: dict, context) -> dict:
     conn = get_conn()
     cur = conn.cursor()
     cur.execute(
-        f"UPDATE {SCHEMA}.users SET password_hash = %s WHERE is_admin = true RETURNING email",
-        (pw_hash,)
+        f"UPDATE {SCHEMA}.users SET password_hash = %s WHERE email = %s AND is_admin = true RETURNING email",
+        (pw_hash, confirm_email)
     )
     row = cur.fetchone()
     conn.commit()
     conn.close()
 
     if not row:
-        return resp(404, {'error': 'No admin user found'})
+        return resp(404, {'error': 'Admin user not found'})
 
-    return resp(200, {'ok': True, 'email': row[0], 'message': 'Admin password updated successfully'})
+    return resp(200, {'ok': True, 'email': row[0]})

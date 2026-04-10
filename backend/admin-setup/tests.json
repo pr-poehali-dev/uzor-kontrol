@@ -1,12 +1,12 @@
 {
   "tests": [
     {
-      "name": "POST without setup_key returns 403",
+      "name": "POST without correct email returns 403",
       "method": "POST",
       "path": "/",
-      "body": {"password": "test1234", "setup_key": "wrong"},
+      "body": {"password": "test1234", "email": "wrong@test.com"},
       "expectedStatus": 403,
-      "expectedBody": {"error": "Invalid setup key"},
+      "expectedBody": {"error": "Email confirmation required"},
       "bodyMatcher": "partial"
     }
   ]

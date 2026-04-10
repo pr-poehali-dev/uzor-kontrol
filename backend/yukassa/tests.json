@@ -1,0 +1,13 @@
+{
+  "tests": [
+    {
+      "name": "POST without auth returns 401",
+      "method": "POST",
+      "path": "/",
+      "body": {"plan_id": "pro"},
+      "expectedStatus": 401,
+      "expectedBody": {"error": "Unauthorized"},
+      "bodyMatcher": "partial"
+    }
+  ]
+}

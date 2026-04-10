@@ -1,10 +1,9 @@
 import { useState } from 'react';
 import { Plan } from '@/lib/subscriptions-api';
-import { useRobokassa, openPaymentPage } from '@/components/extensions/robokassa/useRobokassa';
 import Icon from '@/components/ui/icon';
 
-const ROBOKASSA_URL = 'https://functions.poehali.dev/5c7db9cc-11f9-4c80-a92c-a5b742498c66';
-const TOKEN_KEY = 'vpn_token';
+const YUKASSA_URL = 'https://functions.poehali.dev/4a2b603f-0cc0-46e5-8351-4087e59ecb6f';
+const TOKEN_KEY   = 'vpn_token';
 
 interface CheckoutScreenProps {
   plan: Plan;
@@ -13,45 +12,51 @@ interface CheckoutScreenProps {
 }
 
 const PLAN_COLOR: Record<string, string> = {
-  free: 'text-zinc-400',
+  free:    'text-zinc-400',
   premium: 'text-blue-400',
-  pro: 'text-primary',
+  pro:     'text-primary',
 };
 
+type Step = 'confirm' | 'loading' | 'redirect';
+
 export function CheckoutScreen({ plan, onBack, onSuccess }: CheckoutScreenProps) {
-  const [email, setEmail] = useState('');
-  const [name, setName]   = useState('');
-  const [redirecting, setRedirecting] = useState(false);
-
-  const token = localStorage.getItem(TOKEN_KEY) || '';
-
-  const { createPayment, isLoading } = useRobokassa({
-    apiUrl: ROBOKASSA_URL,
-    onError: (e) => alert(e.message),
-  });
+  const [step, setStep]   = useState<Step>('confirm');
+  const [error, setError] = useState('');
 
   async function handlePay() {
-    if (!email || !name) return;
-    setRedirecting(true);
+    setError('');
+    setStep('loading');
+
+    const token = localStorage.getItem(TOKEN_KEY) || '';
+
     try {
-      // Передаём plan_id через orderComment — backend достаёт из JWT
-      const res = await fetch(ROBOKASSA_URL, {
+      const res = await fetch(YUKASSA_URL, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
+          'Content-Type':    'application/json',
           'X-Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify({
-          plan_id: plan.id,
-          site_url: window.location.origin,
+          plan_id:    plan.id,
+          return_url: `${window.location.origin}?payment=success`,
         }),
       });
+
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Ошибка создания платежа');
-      openPaymentPage(data.payment_url);
+
+      setStep('redirect');
+
+      // Открываем страницу оплаты ЮKassa
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+      if (isMobile) {
+        window.open(data.confirmation_url, '_blank');
+      } else {
+        window.location.href = data.confirmation_url;
+      }
     } catch (e) {
-      alert(e instanceof Error ? e.message : 'Ошибка');
-      setRedirecting(false);
+      setError(e instanceof Error ? e.message : 'Ошибка');
+      setStep('confirm');
     }
   }
 
@@ -59,8 +64,11 @@ export function CheckoutScreen({ plan, onBack, onSuccess }: CheckoutScreenProps)
     <div className="flex flex-col min-h-screen bg-background px-5">
       {/* Header */}
       <div className="flex items-center gap-3 pt-14 pb-6">
-        {!redirecting && (
-          <button onClick={onBack} className="w-9 h-9 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center active:scale-90 transition-transform">
+        {step === 'confirm' && (
+          <button
+            onClick={onBack}
+            className="w-9 h-9 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center active:scale-90 transition-transform"
+          >
             <Icon name="ArrowLeft" size={18} />
           </button>
         )}
@@ -68,20 +76,26 @@ export function CheckoutScreen({ plan, onBack, onSuccess }: CheckoutScreenProps)
       </div>
 
       <div className="flex-1 flex flex-col gap-5 pb-8">
-        {/* Redirecting state */}
-        {redirecting && (
+
+        {/* Loading */}
+        {(step === 'loading' || step === 'redirect') && (
           <div className="flex-1 flex flex-col items-center justify-center gap-4">
             <div className="w-20 h-20 rounded-full border-4 border-primary/30 border-t-primary animate-spin" />
-            <p className="text-lg font-semibold">Переходим к оплате...</p>
-            <p className="text-sm text-muted-foreground text-center">
-              Вы будете перенаправлены на страницу Robokassa
+            <p className="text-lg font-semibold">
+              {step === 'loading' ? 'Создаём платёж...' : 'Переходим к оплате...'}
+            </p>
+            <p className="text-sm text-muted-foreground text-center px-8">
+              {step === 'redirect'
+                ? 'Вы будете перенаправлены на страницу ЮKassa'
+                : 'Пожалуйста, подождите'}
             </p>
           </div>
         )}
 
-        {!redirecting && (
+        {/* Confirm */}
+        {step === 'confirm' && (
           <>
-            {/* Plan summary */}
+            {/* Plan card */}
             <div className="bg-white/5 border border-white/10 rounded-2xl p-5 flex flex-col gap-3">
               <div className="flex items-center justify-between">
                 <div>
@@ -93,6 +107,7 @@ export function CheckoutScreen({ plan, onBack, onSuccess }: CheckoutScreenProps)
                   <p className="text-2xl font-bold">{plan.price_rub} ₽</p>
                 </div>
               </div>
+
               <div className="border-t border-white/10 pt-3 flex flex-col gap-2">
                 {plan.features.map((f, i) => (
                   <div key={i} className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -101,73 +116,56 @@ export function CheckoutScreen({ plan, onBack, onSuccess }: CheckoutScreenProps)
                   </div>
                 ))}
               </div>
+
               <div className="border-t border-white/10 pt-3 flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">Период</span>
                 <span className="font-semibold text-sm">30 дней</span>
               </div>
             </div>
 
-            {/* User details */}
-            <div className="flex flex-col gap-3">
-              <p className="text-xs text-muted-foreground uppercase tracking-wider px-1">Ваши данные</p>
-
-              <div className="relative">
-                <Icon name="User" size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                <input
-                  type="text"
-                  placeholder="Имя *"
-                  value={name}
-                  onChange={e => setName(e.target.value)}
-                  className="w-full bg-white/5 border border-white/10 rounded-xl pl-9 pr-4 py-3 text-sm outline-none focus:border-primary/50 transition-colors placeholder:text-muted-foreground"
-                />
+            {/* ЮKassa badge */}
+            <div className="flex items-center gap-3 p-4 rounded-2xl bg-white/5 border border-white/10">
+              <div className="w-10 h-10 rounded-xl bg-[#6534FF]/20 border border-[#6534FF]/30 flex items-center justify-center flex-shrink-0">
+                <Icon name="CreditCard" size={18} className="text-[#6534FF]" />
               </div>
-
-              <div className="relative">
-                <Icon name="Mail" size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                <input
-                  type="email"
-                  placeholder="Email для чека *"
-                  value={email}
-                  onChange={e => setEmail(e.target.value)}
-                  className="w-full bg-white/5 border border-white/10 rounded-xl pl-9 pr-4 py-3 text-sm outline-none focus:border-primary/50 transition-colors placeholder:text-muted-foreground"
-                />
+              <div className="flex-1">
+                <p className="text-sm font-semibold">ЮKassa</p>
+                <p className="text-xs text-muted-foreground">Карта, СБП, ЮMoney, Mir Pay</p>
+              </div>
+              <div className="flex items-center gap-1 text-green-400">
+                <Icon name="ShieldCheck" size={16} />
+                <span className="text-xs font-medium">Безопасно</span>
               </div>
             </div>
 
-            {/* Robokassa badge */}
-            <div className="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/10">
-              <div className="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center flex-shrink-0">
-                <Icon name="CreditCard" size={15} className="text-blue-400" />
-              </div>
-              <div>
-                <p className="text-sm font-medium">Оплата через Robokassa</p>
-                <p className="text-xs text-muted-foreground">Карта, СБП, ЮMoney, QIWI и др.</p>
-              </div>
-              <div className="ml-auto">
-                <Icon name="ShieldCheck" size={18} className="text-green-400" />
-              </div>
+            {/* Что будет после */}
+            <div className="flex items-start gap-3 p-3 rounded-xl bg-primary/5 border border-primary/20">
+              <Icon name="Info" size={14} className="text-primary mt-0.5 flex-shrink-0" />
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                После оплаты вы вернётесь в приложение и подписка активируется автоматически.
+              </p>
             </div>
+
+            {/* Error */}
+            {error && (
+              <div className="flex items-center gap-2 p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
+                <Icon name="AlertCircle" size={14} />
+                {error}
+              </div>
+            )}
 
             {/* Pay button */}
             <button
               onClick={handlePay}
-              disabled={!email || !name || isLoading}
-              className={`w-full py-4 rounded-2xl font-bold text-base text-white transition-all active:scale-95 disabled:opacity-40
+              className={`w-full py-4 rounded-2xl font-bold text-base text-white transition-all active:scale-95
                 ${plan.id === 'premium' ? 'bg-blue-500 hover:bg-blue-400' : 'bg-primary hover:bg-primary/90'}
               `}
             >
-              {isLoading ? (
-                <span className="flex items-center justify-center gap-2">
-                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  Создаём платёж...
-                </span>
-              ) : (
-                `Оплатить ${plan.price_rub} ₽`
-              )}
+              Оплатить {plan.price_rub} ₽ через ЮKassa
             </button>
 
-            <p className="text-xs text-muted-foreground text-center">
-              После оплаты подписка активируется автоматически
+            <p className="text-xs text-muted-foreground text-center -mt-2">
+              Нажимая «Оплатить», вы соглашаетесь с условиями сервиса
             </p>
           </>
         )}

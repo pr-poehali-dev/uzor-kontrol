@@ -43,7 +43,11 @@ export default function Index() {
     if (screen === 'auth') return;
     subsApi.getPlansAndSubscription()
       .then(d => setSubscription(d.subscription))
-      .catch(() => {}); // подписка недоступна — показываем free по умолчанию
+      .catch((err) => {
+        if (err?.message?.includes('401') || err?.message?.includes('Unauthorized')) {
+          handleLogout();
+        }
+      });
   }, [screen]);
 
   function handleAuth(_token: string) {

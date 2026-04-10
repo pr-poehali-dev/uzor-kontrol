@@ -22,12 +22,36 @@ def resp(status, body=''):
 def get_conn():
     return psycopg2.connect(os.environ['DATABASE_URL'])
 
+YUKASSA_IPS = {
+    '185.71.76.0/27', '185.71.77.0/27', '77.75.153.0/25',
+    '77.75.156.11', '77.75.156.35', '77.75.154.128/25',
+    '2a02:5180::/32',
+}
+
+def is_trusted_ip(ip: str) -> bool:
+    """Проверяет IP на принадлежность ЮKassa (упрощённая проверка)."""
+    if not ip:
+        return False
+    for cidr in YUKASSA_IPS:
+        if ip.startswith(cidr.split('/')[0].rsplit('.', 1)[0]):
+            return True
+    return False
+
 def handler(event: dict, context) -> dict:
+    """Обработка webhook-уведомлений от ЮKassa о результате платежа."""
     if event.get('httpMethod') == 'OPTIONS':
         return {'statusCode': 200, 'headers': CORS, 'body': ''}
 
     if event.get('httpMethod') != 'POST':
         return resp(405, {'error': 'Method not allowed'})
+
+    source_ip = (event.get('requestContext') or {}).get('identity', {}).get('sourceIp', '')
+    webhook_secret = os.environ.get('WEBHOOK_SECRET', '')
+
+    if webhook_secret:
+        provided = event.get('headers', {}).get('X-Webhook-Secret', '')
+        if provided != webhook_secret and not is_trusted_ip(source_ip):
+            return resp(403, {'error': 'Forbidden'})
 
     body = json.loads(event.get('body') or '{}')
 

@@ -27,7 +27,12 @@ export function CheckoutScreen({ plan, onBack, onSuccess }: CheckoutScreenProps)
     setError('');
     setStep('loading');
 
-    const token = localStorage.getItem(TOKEN_KEY) || '';
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (!token) {
+      setError('Вы не авторизованы. Войдите в аккаунт.');
+      setStep('confirm');
+      return;
+    }
 
     try {
       const res = await fetch(YUKASSA_URL, {
@@ -44,10 +49,10 @@ export function CheckoutScreen({ plan, onBack, onSuccess }: CheckoutScreenProps)
 
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Ошибка создания платежа');
+      if (!data.confirmation_url) throw new Error('Не получена ссылка на оплату');
 
       setStep('redirect');
 
-      // Открываем страницу оплаты ЮKassa
       const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
       if (isMobile) {
         window.open(data.confirmation_url, '_blank');

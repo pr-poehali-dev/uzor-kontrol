@@ -1,0 +1,16 @@
+{
+  "tests": [
+    {
+      "name": "OPTIONS returns 200",
+      "method": "OPTIONS",
+      "path": "/",
+      "expectedStatus": 200
+    },
+    {
+      "name": "GET runs maintenance successfully",
+      "method": "GET",
+      "path": "/",
+      "expectedStatus": 200
+    }
+  ]
+}

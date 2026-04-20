@@ -189,11 +189,19 @@ def handler(event: dict, context) -> dict:
         body    = json.loads(event.get('body') or '{}')
         plan_id = body.get('plan_id', '')
 
+        if plan_id == 'free':
+            conn.close()
+            return resp(400, {'error': 'Бесплатный план не требует оплаты'})
+
         cur.execute(f"SELECT * FROM {SCHEMA}.plans WHERE id = %s AND active = true", (plan_id,))
         plan = cur.fetchone()
         if not plan:
             conn.close()
             return resp(400, {'error': 'Invalid plan'})
+
+        if plan['price_rub'] <= 0:
+            conn.close()
+            return resp(400, {'error': 'Этот план нельзя оплатить'})
 
         payment_id = str(uuid.uuid4())
         cur.execute(

@@ -1,5 +1,6 @@
 """
 Управление VPN-подключениями через WireGuard API.
+GET  /?list=servers — список серверов
 POST / body: {"action": "connect", "server_id": "..."} — создать/получить конфигурацию
 POST / body: {"action": "disconnect", "server_id": "..."} — отключиться от сервера
 GET  / — список активных конфигураций пользователя
@@ -39,7 +40,7 @@ def b64url(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).rstrip(b'=').decode()
 
 
-def verify_jwt(token: str) -> dict | None:
+def verify_jwt(token: str):
     try:
         parts = token.split('.')
         if len(parts) != 3:
@@ -56,22 +57,19 @@ def verify_jwt(token: str) -> dict | None:
         return None
 
 
-def get_user(event: dict) -> dict | None:
+def get_user(event: dict):
     auth = event.get('headers', {}).get('X-Authorization', '')
     token = auth.removeprefix('Bearer ').strip()
     return verify_jwt(token)
 
 
-def wg_request(method: str, server_ip: str, path: str, body: dict | None = None) -> dict:
-    """Отправить запрос к WireGuard API серверу."""
+def wg_request(method: str, server_ip: str, path: str, body=None) -> dict:
     api_key = os.environ.get('VPN_SERVER_1_API_KEY', '')
     url = f'http://{server_ip}:51821{path}'
     data = json.dumps(body).encode() if body else None
-
     req = urllib.request.Request(url, data=data, method=method)
     req.add_header('Content-Type', 'application/json')
     req.add_header('Authorization', f'Bearer {api_key}')
-
     try:
         with urllib.request.urlopen(req, timeout=15) as r:
             return json.loads(r.read().decode())
@@ -82,30 +80,112 @@ def wg_request(method: str, server_ip: str, path: str, body: dict | None = None)
         raise Exception(f'WireGuard API недоступен: {e.reason}')
 
 
-def get_server_ip(server_id: str) -> str | None:
-    """Получить IP сервера. Для Франкфурта — из env, для остальных — None."""
+def get_server_ip(server_id: str):
     if server_id == FRANKFURT_SERVER_ID:
         return os.environ.get('VPN_SERVER_1_IP')
     return None
 
 
+def is_server_available(server_id: str) -> bool:
+    return get_server_ip(server_id) is not None
+
+
+def check_subscription_active(cur, user_id: str) -> bool:
+    """Проверяет что подписка активна и не истекла."""
+    cur.execute(
+        f"SELECT plan, status, expires_at FROM {SCHEMA}.subscriptions WHERE user_id = %s",
+        (user_id,)
+    )
+    sub = cur.fetchone()
+    if not sub:
+        return True
+    if sub['status'] == 'blocked':
+        return False
+    if sub['plan'] == 'free':
+        return True
+    if sub['expires_at'] and sub['expires_at'].timestamp() < time.time():
+        return False
+    return sub['status'] == 'active'
+
+
+def check_server_allowed(cur, user_id: str, server_id: str) -> bool:
+    """Free пользователь может только к первому (рекомендованному) серверу."""
+    cur.execute(
+        f"SELECT plan FROM {SCHEMA}.subscriptions WHERE user_id = %s",
+        (user_id,)
+    )
+    sub = cur.fetchone()
+    plan = sub['plan'] if sub else 'free'
+    if plan in ('premium', 'pro'):
+        return True
+    cur.execute(
+        f"SELECT id FROM {SCHEMA}.servers WHERE recommended = true AND status = 'online' ORDER BY name LIMIT 1"
+    )
+    rec = cur.fetchone()
+    if rec and str(rec['id']) == server_id:
+        return True
+    cur.execute(
+        f"SELECT id FROM {SCHEMA}.servers ORDER BY name LIMIT 1"
+    )
+    first = cur.fetchone()
+    return first and str(first['id']) == server_id
+
+
+def handle_list_servers(user_id: str) -> dict:
+    conn = get_conn()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute(
+        f"""SELECT s.id, s.name, s.country, s.city, s.flag, s.load, s.status, s.recommended,
+                   COALESCE(h.latency_ms, 0) AS latency
+            FROM {SCHEMA}.servers s
+            LEFT JOIN LATERAL (
+                SELECT latency_ms FROM {SCHEMA}.server_health
+                WHERE server_id = s.id ORDER BY checked_at DESC LIMIT 1
+            ) h ON true
+            ORDER BY s.recommended DESC, s.name"""
+    )
+    rows = cur.fetchall()
+    conn.close()
+    servers = []
+    for r in rows:
+        sid = str(r['id'])
+        servers.append({
+            'id': sid,
+            'name': r['name'],
+            'country': r['country'],
+            'city': r['city'],
+            'flag': r['flag'],
+            'latency': int(r['latency']) if r['latency'] else 0,
+            'load': r['load'],
+            'online': r['status'] == 'online',
+            'recommended': r['recommended'],
+            'available': is_server_available(sid),
+        })
+    return resp(200, {'servers': servers})
+
+
 def handle_connect(user_id: str, server_id: str) -> dict:
-    """Подключение к VPN серверу: создать или вернуть существующий конфиг."""
     server_ip = get_server_ip(server_id)
     if not server_ip:
-        return resp(400, {'error': 'Этот сервер пока не подключен к VPN'})
+        return resp(400, {'error': 'Этот сервер пока не подключен. Попробуйте другой.'})
 
     conn = get_conn()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    # Проверяем, что сервер существует
+    if not check_subscription_active(cur, user_id):
+        conn.close()
+        return resp(402, {'error': 'Подписка истекла или заблокирована. Продлите подписку в разделе Тарифы.'})
+
+    if not check_server_allowed(cur, user_id, server_id):
+        conn.close()
+        return resp(403, {'error': 'Этот сервер доступен только на Premium/Pro тарифах.'})
+
     cur.execute(f"SELECT id, name FROM {SCHEMA}.servers WHERE id = %s", (server_id,))
     server = cur.fetchone()
     if not server:
         conn.close()
         return resp(404, {'error': 'Сервер не найден'})
 
-    # Проверяем, есть ли уже активный конфиг
     cur.execute(
         f"SELECT client_ip, public_key, config_text, created_at FROM {SCHEMA}.vpn_configs "
         f"WHERE user_id = %s AND server_id = %s AND is_active = true",
@@ -120,18 +200,20 @@ def handle_connect(user_id: str, server_id: str) -> dict:
             'qr_data': existing['config_text'],
         })
 
-    # Создаём нового пира через WireGuard API
     wg_resp = wg_request('POST', server_ip, '/peer', {'user_id': user_id})
 
     client_ip = wg_resp.get('client_ip', '')
     public_key = wg_resp.get('public_key', '')
     config_text = wg_resp.get('config', '')
 
-    # Сохраняем в БД
     cur.execute(
         f"INSERT INTO {SCHEMA}.vpn_configs (user_id, server_id, client_ip, public_key, config_text, is_active) "
         f"VALUES (%s, %s, %s, %s, %s, true)",
         (user_id, server_id, client_ip, public_key, config_text)
+    )
+    cur.execute(
+        f"INSERT INTO {SCHEMA}.audit_logs (user_id, action, meta) VALUES (%s, 'vpn_connect', %s)",
+        (user_id, json.dumps({'server_id': server_id, 'server_name': server['name']}))
     )
     conn.commit()
     conn.close()
@@ -144,7 +226,6 @@ def handle_connect(user_id: str, server_id: str) -> dict:
 
 
 def handle_disconnect(user_id: str, server_id: str) -> dict:
-    """Отключение от VPN сервера: удалить пир и деактивировать конфиг."""
     server_ip = get_server_ip(server_id)
     if not server_ip:
         return resp(400, {'error': 'Этот сервер пока не подключен к VPN'})
@@ -152,7 +233,6 @@ def handle_disconnect(user_id: str, server_id: str) -> dict:
     conn = get_conn()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    # Ищем активный конфиг пользователя
     cur.execute(
         f"SELECT public_key FROM {SCHEMA}.vpn_configs "
         f"WHERE user_id = %s AND server_id = %s AND is_active = true",
@@ -163,10 +243,11 @@ def handle_disconnect(user_id: str, server_id: str) -> dict:
         conn.close()
         return resp(404, {'error': 'Активная конфигурация не найдена'})
 
-    # Удаляем пир через WireGuard API
-    wg_request('DELETE', server_ip, '/peer', {'public_key': config['public_key']})
+    try:
+        wg_request('DELETE', server_ip, '/peer', {'public_key': config['public_key']})
+    except Exception:
+        pass
 
-    # Деактивируем конфиг
     cur.execute(
         f"UPDATE {SCHEMA}.vpn_configs SET is_active = false "
         f"WHERE user_id = %s AND server_id = %s AND is_active = true",
@@ -179,7 +260,6 @@ def handle_disconnect(user_id: str, server_id: str) -> dict:
 
 
 def handle_list(user_id: str) -> dict:
-    """Список активных VPN конфигов пользователя."""
     conn = get_conn()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
@@ -202,24 +282,24 @@ def handle_list(user_id: str) -> dict:
 
 
 def handler(event: dict, context) -> dict:
-    """Обработчик запросов для управления VPN-подключениями."""
+    """VPN connect / disconnect / list servers / list configs."""
     if event.get('httpMethod') == 'OPTIONS':
         return {'statusCode': 200, 'headers': CORS, 'body': ''}
 
     method = event.get('httpMethod', 'GET')
 
-    # Авторизация обязательна для всех запросов
     user = get_user(event)
     if not user:
         return resp(401, {'error': 'Unauthorized'})
 
     user_id = user['sub']
+    qs = event.get('queryStringParameters') or {}
 
-    # ---- GET / — список активных конфигов ----
     if method == 'GET':
+        if qs.get('list') == 'servers':
+            return handle_list_servers(user_id)
         return handle_list(user_id)
 
-    # ---- POST / — connect / disconnect ----
     if method == 'POST':
         body = json.loads(event.get('body') or '{}')
         action = body.get('action', '')

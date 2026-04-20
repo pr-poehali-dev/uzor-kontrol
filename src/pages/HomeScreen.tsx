@@ -10,9 +10,13 @@ import Icon from '@/components/ui/icon';
 interface HomeScreenProps {
   onOpenServers: () => void;
   selectedServer: Server;
+  subStatus?: string;
+  onOpenPlans?: () => void;
 }
 
-export function HomeScreen({ onOpenServers, selectedServer }: HomeScreenProps) {
+export function HomeScreen({ onOpenServers, selectedServer, subStatus = 'active', onOpenPlans }: HomeScreenProps) {
+  const blocked = subStatus === 'blocked';
+  const expired = subStatus === 'expired';
   const [connState, setConnState] = useState<ConnectionState>({
     status: 'disconnected',
     server: null,
@@ -36,6 +40,15 @@ export function HomeScreen({ onOpenServers, selectedServer }: HomeScreenProps) {
 
   const handleToggle = useCallback(async () => {
     setError(null);
+
+    if (blocked) {
+      setError('Аккаунт заблокирован. Обратитесь в поддержку.');
+      return;
+    }
+    if (expired) {
+      setError('Подписка истекла. Продлите в разделе Тарифы.');
+      return;
+    }
 
     if (connState.status === 'connected') {
       setConnState(s => ({ ...s, status: 'connecting' }));
@@ -66,7 +79,7 @@ export function HomeScreen({ onOpenServers, selectedServer }: HomeScreenProps) {
         setConnState(s => ({ ...s, status: 'disconnected' }));
       }
     }
-  }, [connState.status, selectedServer]);
+  }, [connState.status, selectedServer, blocked, expired]);
 
   const isConnected = connState.status === 'connected';
 
@@ -83,6 +96,27 @@ export function HomeScreen({ onOpenServers, selectedServer }: HomeScreenProps) {
       </div>
 
       <div className="flex-1 flex flex-col items-center justify-center gap-10 w-full">
+        {(blocked || expired) && (
+          <div className="w-full max-w-xs p-4 rounded-2xl bg-red-500/10 border border-red-500/30">
+            <div className="flex items-start gap-3">
+              <Icon name={blocked ? 'ShieldAlert' : 'Clock'} size={18} className="text-red-400 flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-red-400">
+                  {blocked ? 'Аккаунт заблокирован' : 'Подписка истекла'}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {blocked ? 'Свяжитесь с поддержкой для разблокировки.' : 'Продлите подписку для продолжения работы.'}
+                </p>
+                {expired && onOpenPlans && (
+                  <button onClick={onOpenPlans} className="mt-2 text-xs text-primary font-medium hover:underline">
+                    Продлить →
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         <ConnectButton status={connState.status} onClick={handleToggle} />
 
         {error && (

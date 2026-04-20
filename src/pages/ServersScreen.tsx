@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react';
-import { Server, MOCK_SERVERS } from '@/lib/api';
+import { useState, useMemo, useEffect } from 'react';
+import { Server, api } from '@/lib/api';
 import Icon from '@/components/ui/icon';
 
 interface ServersScreenProps {
@@ -15,13 +15,22 @@ type SortKey = 'latency' | 'load';
 export function ServersScreen({ selected, onSelect, onBack, plan = 'free', onUpgrade }: ServersScreenProps) {
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState<SortKey>('latency');
+  const [servers, setServers] = useState<Server[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.listServers()
+      .then(s => setServers(s))
+      .catch(() => setServers([]))
+      .finally(() => setLoading(false));
+  }, []);
 
   const filtered = useMemo(() => {
     const q = query.toLowerCase();
-    return MOCK_SERVERS
+    return servers
       .filter(s => s.name.toLowerCase().includes(q) || (s.city?.toLowerCase().includes(q)))
       .sort((a, b) => a[sort] - b[sort]);
-  }, [query, sort]);
+  }, [query, sort, servers]);
 
   function getLatencyColor(ms: number) {
     if (ms < 50) return 'text-green-400';
@@ -35,14 +44,14 @@ export function ServersScreen({ selected, onSelect, onBack, plan = 'free', onUpg
     return 'bg-red-500';
   }
 
-  function isLocked(index: number): boolean {
+  function isLocked(server: Server, index: number): boolean {
     if (plan === 'premium' || plan === 'pro') return false;
+    if (server.recommended) return false;
     return index > 0;
   }
 
   return (
     <div className="flex flex-col min-h-screen bg-background">
-      {/* Header */}
       <div className="flex items-center gap-3 px-5 pt-14 pb-4">
         <button onClick={onBack} className="w-9 h-9 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center active:scale-90 transition-transform">
           <Icon name="ArrowLeft" size={18} />
@@ -50,7 +59,7 @@ export function ServersScreen({ selected, onSelect, onBack, plan = 'free', onUpg
         <h1 className="text-xl font-display font-bold flex-1">Серверы</h1>
         <button
           onClick={() => {
-            const rec = MOCK_SERVERS.find(s => s.recommended && s.online);
+            const rec = servers.find(s => s.recommended && s.online && s.available);
             if (rec) { onSelect(rec); onBack(); }
           }}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-primary/20 border border-primary/30 text-primary text-sm font-medium"
@@ -60,7 +69,6 @@ export function ServersScreen({ selected, onSelect, onBack, plan = 'free', onUpg
         </button>
       </div>
 
-      {/* Free plan banner */}
       {plan === 'free' && (
         <button onClick={onUpgrade} className="mx-5 mb-3 p-3 rounded-2xl bg-gradient-to-r from-primary/20 to-blue-500/20 border border-primary/30 flex items-center gap-3 active:scale-95 transition-all">
           <div className="w-8 h-8 rounded-xl bg-primary/20 flex items-center justify-center flex-shrink-0">
@@ -74,7 +82,6 @@ export function ServersScreen({ selected, onSelect, onBack, plan = 'free', onUpg
         </button>
       )}
 
-      {/* Search */}
       <div className="px-5 pb-3">
         <div className="relative">
           <Icon name="Search" size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -87,7 +94,6 @@ export function ServersScreen({ selected, onSelect, onBack, plan = 'free', onUpg
         </div>
       </div>
 
-      {/* Sort */}
       <div className="flex gap-2 px-5 pb-4">
         {(['latency', 'load'] as SortKey[]).map(key => (
           <button
@@ -102,22 +108,30 @@ export function ServersScreen({ selected, onSelect, onBack, plan = 'free', onUpg
         ))}
       </div>
 
-      {/* List */}
       <div className="flex-1 overflow-y-auto px-5 pb-8 flex flex-col gap-2">
-        {filtered.map((server, index) => {
-          const locked = isLocked(index);
+        {loading && (
+          <div className="flex items-center justify-center py-10">
+            <div className="w-8 h-8 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+          </div>
+        )}
+        {!loading && filtered.length === 0 && (
+          <p className="text-center text-sm text-muted-foreground py-10">Серверы не найдены</p>
+        )}
+        {!loading && filtered.map((server, index) => {
+          const locked = isLocked(server, index);
+          const unavailable = !server.available;
           return (
             <button
               key={server.id}
               onClick={() => {
                 if (locked) { onUpgrade?.(); return; }
-                if (!server.online) return;
+                if (!server.online || unavailable) return;
                 onSelect(server);
                 onBack();
               }}
               className={`flex items-center gap-3 p-4 rounded-2xl border transition-all text-left relative overflow-hidden
                 ${selected.id === server.id && !locked ? 'bg-primary/10 border-primary/50' : 'bg-white/5 border-white/10 hover:border-white/20'}
-                ${!server.online && !locked ? 'opacity-40' : ''}
+                ${(!server.online || unavailable) && !locked ? 'opacity-40' : ''}
                 ${locked ? 'opacity-60' : 'active:scale-[0.98]'}
               `}
             >
@@ -127,6 +141,11 @@ export function ServersScreen({ selected, onSelect, onBack, plan = 'free', onUpg
                     <Icon name="Lock" size={12} className="text-primary" />
                     <span className="text-xs text-primary font-medium">Premium</span>
                   </div>
+                </div>
+              )}
+              {!locked && unavailable && (
+                <div className="absolute top-1 right-2">
+                  <span className="text-[9px] px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-400 font-medium">Скоро</span>
                 </div>
               )}
               <span className="text-2xl">{server.flag}</span>

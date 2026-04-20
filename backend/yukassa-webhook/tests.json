@@ -1,13 +1,25 @@
 {
   "tests": [
     {
-      "name": "POST unknown event returns ok",
+      "name": "OPTIONS returns 200",
+      "method": "OPTIONS",
+      "path": "/",
+      "expectedStatus": 200
+    },
+    {
+      "name": "POST without auth and not from ЮKassa IP returns 403",
       "method": "POST",
       "path": "/",
       "body": {"event": "payment.created", "object": {}},
-      "expectedStatus": 200,
-      "expectedBody": {"ok": true},
+      "expectedStatus": 403,
+      "expectedBody": {"error": "Forbidden"},
       "bodyMatcher": "partial"
+    },
+    {
+      "name": "GET method not allowed",
+      "method": "GET",
+      "path": "/",
+      "expectedStatus": 405
     }
   ]
 }

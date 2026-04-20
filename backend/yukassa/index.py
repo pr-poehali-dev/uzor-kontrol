@@ -71,6 +71,9 @@ def handler(event: dict, context) -> dict:
     body    = json.loads(event.get('body') or '{}')
     plan_id = body.get('plan_id', '')
 
+    if plan_id == 'free':
+        return resp(400, {'error': 'Бесплатный план не требует оплаты'})
+
     conn = get_conn()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
@@ -80,6 +83,10 @@ def handler(event: dict, context) -> dict:
     if not plan:
         conn.close()
         return resp(400, {'error': 'Invalid plan'})
+
+    if plan['price_rub'] <= 0:
+        conn.close()
+        return resp(400, {'error': 'Этот план нельзя оплатить'})
 
     # Данные пользователя
     cur.execute(f"SELECT email, name FROM {SCHEMA}.users WHERE id = %s", (user['sub'],))

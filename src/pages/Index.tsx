@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Server, MOCK_SERVERS } from '@/lib/api';
+import { Server, FALLBACK_SERVER, api } from '@/lib/api';
 import { subsApi, Plan, Subscription } from '@/lib/subscriptions-api';
 import { HomeScreen } from './HomeScreen';
 import { ServersScreen } from './ServersScreen';
@@ -7,9 +7,11 @@ import { AuthScreen } from './AuthScreen';
 import { SettingsScreen } from './SettingsScreen';
 import { PlansScreen } from './PlansScreen';
 import { CheckoutScreen } from './CheckoutScreen';
+import { HelpScreen } from './HelpScreen';
+import { LegalScreen } from './LegalScreen';
 import Icon from '@/components/ui/icon';
 
-type Screen = 'auth' | 'home' | 'servers' | 'settings' | 'plans' | 'checkout';
+type Screen = 'auth' | 'home' | 'servers' | 'settings' | 'plans' | 'checkout' | 'help' | 'legal';
 
 interface NavItemProps {
   icon: string;
@@ -35,7 +37,7 @@ const NAV_SCREENS: Screen[] = ['home', 'servers', 'settings'];
 export default function Index() {
   const hasToken = !!localStorage.getItem('vpn_token');
   const [screen, setScreen] = useState<Screen>(hasToken ? 'home' : 'auth');
-  const [selectedServer, setSelectedServer] = useState<Server>(MOCK_SERVERS[0]);
+  const [selectedServer, setSelectedServer] = useState<Server>(FALLBACK_SERVER);
   const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null);
   const [subscription, setSubscription] = useState<Subscription>({ plan: 'free', status: 'active', expires_at: null });
 
@@ -48,6 +50,14 @@ export default function Index() {
           handleLogout();
         }
       });
+    api.listServers()
+      .then(list => {
+        if (list.length > 0) {
+          const rec = list.find(s => s.recommended && s.available) || list.find(s => s.available) || list[0];
+          setSelectedServer(prev => list.find(s => s.id === prev.id) || rec);
+        }
+      })
+      .catch(() => {});
   }, [screen]);
 
   function handleAuth(_token: string) {
@@ -86,6 +96,8 @@ export default function Index() {
           <HomeScreen
             onOpenServers={() => setScreen('servers')}
             selectedServer={selectedServer}
+            subStatus={subscription.status}
+            onOpenPlans={() => setScreen('plans')}
           />
         )}
         {screen === 'servers' && (
@@ -102,6 +114,8 @@ export default function Index() {
             onBack={() => setScreen('home')}
             onLogout={handleLogout}
             onOpenPlans={() => setScreen('plans')}
+            onOpenHelp={() => setScreen('help')}
+            onOpenLegal={() => setScreen('legal')}
           />
         )}
         {screen === 'plans' && (
@@ -117,6 +131,12 @@ export default function Index() {
             onBack={() => setScreen('plans')}
             onSuccess={handlePaymentSuccess}
           />
+        )}
+        {screen === 'help' && (
+          <HelpScreen onBack={() => setScreen('settings')} />
+        )}
+        {screen === 'legal' && (
+          <LegalScreen onBack={() => setScreen('settings')} />
         )}
       </div>
 

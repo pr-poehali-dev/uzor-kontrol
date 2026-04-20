@@ -77,7 +77,7 @@ export function HomeScreen({ onOpenServers, selectedServer }: HomeScreenProps) {
           <div className="w-8 h-8 rounded-lg bg-primary/20 border border-primary/40 flex items-center justify-center">
             <Icon name="Shield" size={16} className="text-primary" />
           </div>
-          <span className="font-display font-bold text-lg tracking-wider">NEXTVPN</span>
+          <span className="font-display tracking-wider text-rose-500 font-light text-lg">NEXTVPN</span>
         </div>
         <StatusBadge status={connState.status} />
       </div>

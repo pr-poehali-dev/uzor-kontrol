@@ -49,7 +49,7 @@ function getToken(): string | null {
 
 function authHeaders(): Record<string, string> {
   const t = getToken();
-  return t ? { 'Authorization': `Bearer ${t}`, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
+  return t ? { 'X-Authorization': `Bearer ${t}`, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
 }
 
 export const api = {
